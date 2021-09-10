@@ -9,6 +9,9 @@ namespace LevelEditor2D
 	public class EditorPreferences
 	{
 		public const string PreferencesFileName = "editor_preferences.config";
+		private Color _toolbarBackgroundColor;
+		private Color _gridLinesColor;
+		private Color _backgroundColor;
 
 		public static string StateFilePath
 		{
@@ -19,8 +22,40 @@ namespace LevelEditor2D
 			}
 		}
 
+		public event EventHandler BackgroundColorChanged;
+		public event EventHandler GridLinesColorChanged;
+		public event EventHandler ToolbarBackgroundColorChanged;
+
 		[DisplayName("Background color")]
-		public Color BackgroundColor { get; set; }
+		public Color BackgroundColor 
+		{ 
+			get => _backgroundColor;
+			set
+			{
+				_backgroundColor = value;
+				BackgroundColorChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
+		[DisplayName("Grid lines color")]
+		public Color GridLinesColor 
+		{ 
+			get => _gridLinesColor;
+			set
+			{
+				_gridLinesColor = value;
+				GridLinesColorChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
+		[DisplayName("Toolbar background")]
+		public Color ToolbarBackgroundColor 
+		{ 
+			get => _toolbarBackgroundColor;
+			set
+			{
+				_toolbarBackgroundColor = value;
+				ToolbarBackgroundColorChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
 		[Browsable(false)]
 		public float LeftSplitterPosition { get; set; }
 		[Browsable(false)]
