@@ -4,9 +4,10 @@ namespace LevelEditor2D
 {
 	public static class Program
 	{
-		static void Main()
+		[STAThread]
+		static void Main(string[] args)
 		{
-			using (var game = new Main())
+			using (var game = new Main(args))
 			{
 				game.Run();
 			}

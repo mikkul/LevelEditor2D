@@ -1,0 +1,40 @@
+<Project>
+  <Project.ExportOptions />
+  <Grid ShowGridLines="True">
+    <Grid.ColumnsProportions>
+      <Proportion Type="Part" />
+    </Grid.ColumnsProportions>
+    <Grid.RowsProportions>
+      <Proportion Type="Auto" />
+      <Proportion Type="Fill" />
+    </Grid.RowsProportions>
+    <HorizontalMenu Id="top-menu" >
+      <MenuItem Text="File">
+        <MenuItem Text="New" ShortcutText="Ctrl+N" Id="menu-file-new" />
+        <MenuItem Text="Open" ShortcutText="Ctrl+O" Id="menu-file-open" />
+        <MenuItem Text="Save" ShortcutText="Ctrl+S" Id="menu-file-save" />
+        <MenuItem Text="Save As" ShortcutText="Ctrl+Shift+S" Id="menu-file-save-as" />
+        <MenuSeparator />
+        <MenuItem Text="Exit" ShortcutText="Ctrl+E" Id="menu-file-exit" />
+      </MenuItem>
+      <MenuItem Text="Edit">
+        <MenuItem Text="Undo" ShortcutText="Ctrl+Z" Id="menu-edit-undo" />
+        <MenuSeparator />
+        <MenuItem Text="Preferences" Id="menu-edit-preferences" />
+      </MenuItem>
+    </HorizontalMenu>
+    <HorizontalSplitPane GridRow="1" >
+      <Panel>
+        
+      </Panel>
+      <Panel>
+        
+      </Panel>
+      <Panel>
+        
+      </Panel>
+    </HorizontalSplitPane>
+    <Window Title="Editor preferences" GridRowSpan="2" Id="editor-preferences-window" >
+    </Window>
+  </Grid>
+</Project>
