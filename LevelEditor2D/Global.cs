@@ -8,6 +8,18 @@ namespace LevelEditor2D
 		public const string CompanyName = "mikkul";
 		public const string ProgramName = "LevelEditor2D";
 
+		public const int DefaultGridCellSize = 32;
+		public const float SelectionDistanceTolerance = 10;
+		public const float VertexRenderSize = 10;
+
+		public static float SelectionDistanceToleranceSquared
+		{
+			get
+			{
+				return SelectionDistanceTolerance * SelectionDistanceTolerance;
+			}
+		}
+
 		public static string AppDataPath
 		{
 			get

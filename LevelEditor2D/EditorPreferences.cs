@@ -9,9 +9,13 @@ namespace LevelEditor2D
 	public class EditorPreferences
 	{
 		public const string PreferencesFileName = "editor_preferences.config";
-		private Color _toolbarBackgroundColor;
+		private Color _toolbarBackground;
 		private Color _gridLinesColor;
 		private Color _backgroundColor;
+		private Color _vertexColor;
+		private Color _selectedVertexColor;
+		private Color _toolbarButtonBackground;
+		private Color _toolbarButtonHoverBackground;
 
 		public static string StateFilePath
 		{
@@ -22,40 +26,71 @@ namespace LevelEditor2D
 			}
 		}
 
-		public event EventHandler BackgroundColorChanged;
-		public event EventHandler GridLinesColorChanged;
-		public event EventHandler ToolbarBackgroundColorChanged;
+		public event EventHandler ToolbarBackgroundChanged;
+		public event EventHandler ToolbarButtonBackgroundChanged;
+		public event EventHandler ToolbarButtonHoverBackgroundChanged;
 
 		[DisplayName("Background color")]
-		public Color BackgroundColor 
-		{ 
+		public Color BackgroundColor
+		{
 			get => _backgroundColor;
 			set
 			{
 				_backgroundColor = value;
-				BackgroundColorChanged?.Invoke(this, EventArgs.Empty);
 			}
 		}
 		[DisplayName("Grid lines color")]
-		public Color GridLinesColor 
-		{ 
+		public Color GridLinesColor
+		{
 			get => _gridLinesColor;
 			set
 			{
 				_gridLinesColor = value;
-				GridLinesColorChanged?.Invoke(this, EventArgs.Empty);
 			}
 		}
 		[DisplayName("Toolbar background")]
-		public Color ToolbarBackgroundColor 
-		{ 
-			get => _toolbarBackgroundColor;
+		public Color ToolbarBackground
+		{
+			get => _toolbarBackground;
 			set
 			{
-				_toolbarBackgroundColor = value;
-				ToolbarBackgroundColorChanged?.Invoke(this, EventArgs.Empty);
+				_toolbarBackground = value;
+				ToolbarBackgroundChanged?.Invoke(this, EventArgs.Empty);
 			}
 		}
+		[DisplayName("Toolbar button background")]
+		public Color ToolbarButtonBackground
+		{
+			get => _toolbarButtonBackground;
+			set
+			{
+				_toolbarButtonBackground = value;
+				ToolbarButtonBackgroundChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
+		[DisplayName("Toolbar button hover background")]
+		public Color ToolbarButtonHoverBackground 
+		{ 
+			get => _toolbarButtonHoverBackground;
+			set
+			{
+				_toolbarButtonHoverBackground = value;
+				ToolbarButtonHoverBackgroundChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
+		[DisplayName("Vertex color")]
+		public Color VertexColor
+		{
+			get => _vertexColor;
+			set => _vertexColor = value;
+		}
+		[DisplayName("Selected vertex color")]
+		public Color SelectedVertexColor
+		{
+			get => _selectedVertexColor;
+			set => _selectedVertexColor = value;
+		}
+
 		[Browsable(false)]
 		public float LeftSplitterPosition { get; set; }
 		[Browsable(false)]

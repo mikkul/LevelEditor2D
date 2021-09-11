@@ -9,15 +9,15 @@ using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.File;
 using Myra.Graphics2D.UI.Properties;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml.Serialization;
 
 namespace LevelEditor2D
 {
 	public class Main : Game
 	{
-		private const int _defaultGridCellSizePixels = 32;
-
 		private GraphicsDeviceManager _graphics;
 		private SpriteBatch _spriteBatch;
 		private Desktop _desktop;
@@ -31,6 +31,8 @@ namespace LevelEditor2D
 		private Level _unmodifiedLevel;
 		private Level _currentLevel;
 		private float _zoomLevel;
+		private Tool _selectedTool;
+		private List<Vertex> _selectedVertices;
 
 		public Level CurrentLevel
 		{
@@ -73,7 +75,7 @@ namespace LevelEditor2D
 				editorPreferences = new EditorPreferences();
 				editorPreferences.BackgroundColor = new Color(82, 82, 82);
 				editorPreferences.GridLinesColor = new Color(100, 100, 100);
-				editorPreferences.ToolbarBackgroundColor = new Color(125, 125, 125);
+				editorPreferences.ToolbarBackground = new Color(125, 125, 125);
 				editorPreferences.LeftSplitterPosition = 0.15f;
 				editorPreferences.RightSplitterPosition = 0.75f;
 			}
@@ -111,6 +113,7 @@ namespace LevelEditor2D
 			_graphics.ApplyChanges();
 
 			_zoomLevel = 1f;
+			_selectedVertices = new List<Vertex>();
 
 			base.Initialize();
 		}
@@ -185,20 +188,37 @@ namespace LevelEditor2D
 
 			var leftSidebar = GetWidget<Panel>("left-sidebar");
 			var rightSidebar = GetWidget<Panel>("right-sidebar");
-			leftSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackgroundColor);
-			rightSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackgroundColor);
+			leftSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackground);
+			rightSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackground);
 
-			Global.EditorPreferences.ToolbarBackgroundColorChanged += EditorPreferences_ToolbarBackgroundColorChanged;
+			Global.EditorPreferences.ToolbarBackgroundChanged += EditorPreferences_ToolbarBackgroundColorChanged;
 
 			_editorAreaPanel = GetWidget<Panel>("editor-area");
+
+			var toolSelectButton = GetWidget<TextButton>("tool-select");
+			toolSelectButton.Click += OnToolSelectClicked;
+			var toolAddButton = GetWidget<TextButton>("tool-add");
+			toolAddButton.Click += OnToolAddClicked;
+		}
+
+		private void OnToolAddClicked(object sender, EventArgs e)
+		{
+			_selectedTool = Tool.Add;
+			Console.WriteLine(_selectedTool);
+		}
+
+		private void OnToolSelectClicked(object sender, EventArgs e)
+		{
+			_selectedTool = Tool.Select;
+			Console.WriteLine(_selectedTool);
 		}
 
 		private void EditorPreferences_ToolbarBackgroundColorChanged(object sender, EventArgs e)
 		{
 			var leftSidebar = GetWidget<Panel>("left-sidebar");
 			var rightSidebar = GetWidget<Panel>("right-sidebar");
-			leftSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackgroundColor);
-			rightSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackgroundColor);
+			leftSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackground);
+			rightSidebar.Background = new SolidBrush(Global.EditorPreferences.ToolbarBackground);
 		}
 
 		private void UpdateLevelPropertyGrid(Level level)
@@ -344,11 +364,6 @@ namespace LevelEditor2D
 
 		protected override void Update(GameTime gameTime)
 		{
-			if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
-			{
-				Exit();
-			}
-
 			HandleInput();
 			UpdateWindowTitle();
 
@@ -373,14 +388,67 @@ namespace LevelEditor2D
 				}
 			}
 
+			if(keyboardState.WasKeyJustUp(Keys.Escape))
+			{
+				_selectedVertices.Clear();
+			}
+
 			if (mouseState.WasButtonJustDown(MouseButton.Left))
 			{
-				if(_editorAreaPanel.ActualBounds.Contains(mouseState.Position) && !_topMenu.IsOpen && !_isPopupActive)
+				HandleTools(mouseState, keyboardState);
+			}
+		}
+
+		private void HandleTools(MouseStateExtended mouseState, KeyboardStateExtended keyboardState)
+		{
+			if (!_editorAreaPanel.ActualBounds.Contains(mouseState.Position) || _topMenu.IsOpen || _isPopupActive)
+			{
+				return;
+			}
+
+			var worldX = mouseState.Position.X * _zoomLevel;
+			var worldY = mouseState.Position.Y * _zoomLevel;
+
+			if (_selectedTool == Tool.Select)
+			{
+				HandleSelectTool(keyboardState, worldX, worldY);
+			}
+			else if(_selectedTool == Tool.Add)
+			{
+				var vertex = new Vertex(worldX, worldY);
+				_currentLevel.Vertices.Add(vertex);
+				Console.WriteLine(vertex);
+			}
+		}
+
+		private void HandleSelectTool(KeyboardStateExtended keyboardState, float worldX, float worldY)
+		{
+			var selectedVertex = CurrentLevel.Vertices.FirstOrDefault(v =>
+			{
+				var deltaX = Math.Abs(v.X - worldX);
+				var deltaY = Math.Abs(v.Y - worldY);
+				var dist = deltaX * deltaX + deltaY * deltaY;
+				return dist <= Global.SelectionDistanceToleranceSquared;
+			});
+			var selectMultiple = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+			if (selectedVertex != null)
+			{
+				if (_selectedVertices.Contains(selectedVertex))
 				{
-					var vertex = new Vertex(mouseState.Position.X * _zoomLevel, mouseState.Position.Y * _zoomLevel);
-					_currentLevel.Vertices.Add(vertex);
-					Console.WriteLine(vertex);
+					_selectedVertices.Remove(selectedVertex);
 				}
+				else
+				{
+					if (!selectMultiple)
+					{
+						_selectedVertices.Clear();
+					}
+					_selectedVertices.Add(selectedVertex);
+				}
+			}
+			else if(!selectMultiple)
+			{
+				_selectedVertices.Clear();
 			}
 		}
 
@@ -411,7 +479,7 @@ namespace LevelEditor2D
 			// draw the grid
 			var windowWidth = _graphics.PreferredBackBufferWidth;
 			var windowHeight = _graphics.PreferredBackBufferHeight;
-			float cellGridSize = _defaultGridCellSizePixels / _zoomLevel;
+			float cellGridSize = Global.DefaultGridCellSize / _zoomLevel;
 			int horizontalLineCount = (int)((float)windowHeight / cellGridSize);
 			int verticalLineCount = (int)((float)windowWidth / cellGridSize);
 			// horizontal lines
@@ -429,9 +497,14 @@ namespace LevelEditor2D
 
 			foreach (var vertex in _currentLevel.Vertices)
 			{
+				Color vertexColor = Global.EditorPreferences.VertexColor;
+				if(_selectedVertices.Contains(vertex))
+				{
+					vertexColor = Global.EditorPreferences.SelectedVertexColor;
+				}
 				var normalizedX = vertex.X / _zoomLevel;
 				var normalizedY = vertex.Y / _zoomLevel;
-				_spriteBatch.DrawPoint(normalizedX, normalizedY, Color.Yellow, 5);
+				_spriteBatch.DrawPoint(normalizedX, normalizedY, vertexColor, Global.VertexRenderSize);
 			}
 
 			_spriteBatch.End();
