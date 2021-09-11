@@ -1,21 +1,17 @@
-﻿using System;
-
-namespace LevelEditor2D
+﻿namespace LevelEditor2D
 {
-	public class Vertex : GameObject, IEquatable<Vertex>
+	public class Vertex : GameObject
 	{
 		private Vertex()
 		{
 		}
 
-		private Vertex(float x, float y, int id)
+		private Vertex(float x, float y, int id) : base(id)
 		{
 			X = x;
 			Y = y;
-			Id = id;
 		}
 
-		public int Id { get; set; }
 		public float X { get; set; }
 		public float Y { get; set; }
 
@@ -24,9 +20,13 @@ namespace LevelEditor2D
 			return new Vertex(x, y, Global.GetUniqueId());
 		}
 
-		public bool Equals(Vertex other)
+		public override bool Equals(GameObject other)
 		{
-			return Id == other.Id;
+			if(other is Vertex vertex)
+			{
+				return Id == vertex.Id;
+			}
+			return false;
 		}
 
 		public override string ToString()

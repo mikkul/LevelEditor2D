@@ -9,9 +9,11 @@ using Myra.Graphics2D.Brushes;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.File;
 using Myra.Graphics2D.UI.Properties;
+using Myra.MML;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 
 namespace LevelEditor2D
@@ -36,7 +38,7 @@ namespace LevelEditor2D
 		private Level _currentLevel;
 		private float _zoomLevel;
 		private Tool _selectedTool;
-		private ObservableCollection<Vertex> _selectedVertices;
+		private ObservableCollection<GameObject> _selectedObjects;
 
 		public Level CurrentLevel
 		{
@@ -117,44 +119,44 @@ namespace LevelEditor2D
 			_graphics.ApplyChanges();
 
 			_zoomLevel = 1f;
-			_selectedVertices = new ObservableCollection<Vertex>();
-			_selectedVertices.Cleared += OnSelectedVerticesCleared;
-			_selectedVertices.ItemAdded += OnSelectedVerticesItemAdded;
-			_selectedVertices.ItemRemoved += OnSelectedVerticesItemRemoved;
+			_selectedObjects = new ObservableCollection<GameObject>();
+			_selectedObjects.Cleared += OnSelectedVerticesCleared;
+			_selectedObjects.ItemAdded += OnSelectedVerticesItemAdded;
+			_selectedObjects.ItemRemoved += OnSelectedVerticesItemRemoved;
 
 			base.Initialize();
 		}
 
-		private void OnSelectedVerticesItemRemoved(object sender, ItemEventArgs<Vertex> e)
+		private void OnSelectedVerticesItemRemoved(object sender, ItemEventArgs<GameObject> e)
 		{
-			if (_selectedVertices.Count == 1)
+			if (_selectedObjects.Count == 1)
 			{
-				_objectPropertiesPropGrid.Object = _selectedVertices[0];
+				_objectPropertiesPropGrid.Object = _selectedObjects[0];
 			}
 			else
 			{
 				_objectPropertiesPropGrid.Object = null;
 			}
 			
-			if(_selectedVertices.Count == 0)
+			if(_selectedObjects.Count == 0)
 			{
 				var deleteButton = GetWidget<TextButton>("properties-delete-object");
 				deleteButton.Visible = false;
 			}
 		}
 
-		private void OnSelectedVerticesItemAdded(object sender, ItemEventArgs<Vertex> e)
+		private void OnSelectedVerticesItemAdded(object sender, ItemEventArgs<GameObject> e)
 		{
-			if(_selectedVertices.Count == 1)
+			if(_selectedObjects.Count == 1)
 			{
-				_objectPropertiesPropGrid.Object = _selectedVertices[0];
+				_objectPropertiesPropGrid.Object = _selectedObjects[0];
 			}
 			else
 			{
 				_objectPropertiesPropGrid.Object = null;
 			}
 
-			if(_selectedVertices.Count >= 1)
+			if(_selectedObjects.Count >= 1)
 			{
 				var deleteButton = GetWidget<TextButton>("properties-delete-object");
 				deleteButton.Visible = true;
@@ -264,18 +266,55 @@ namespace LevelEditor2D
 
 		private void OnPropertiesDeleteObjectButtonClicked(object sender, EventArgs e)
 		{
-			foreach (var vertex in _selectedVertices)
+			foreach (var gameObject in _selectedObjects)
 			{
-				CurrentLevel.Vertices.Remove(vertex);
-				var affectedEdges = CurrentLevel.Edges
-					.Where(e => e.A == vertex || e.B == vertex)
-					.ToList();
-				foreach (var edge in affectedEdges)
+				CurrentLevel.Objects.Remove(gameObject);
+				if(gameObject is Vertex vertex)
 				{
-					CurrentLevel.Edges.Remove(edge);
+					DeleteVertex(vertex);
+				}
+				else if(gameObject is Edge edge)
+				{
+					DeleteEdge(edge);
 				}
 			}
-			_selectedVertices.Clear();
+			_selectedObjects.Clear();
+		}
+
+		private void DeleteEdge(Edge edge)
+		{
+			var affectedVertices = CurrentLevel.Objects
+				.Where(x =>
+				{
+					if (x is Vertex vertex)
+					{
+						return edge.A.Equals(vertex) || edge.B.Equals(vertex);
+					}
+					return false;
+				})
+				.ToList();
+			foreach (var vertex in affectedVertices)
+			{
+				CurrentLevel.Objects.Remove(vertex);
+			}
+		}
+
+		private void DeleteVertex(Vertex vertex)
+		{
+			var affectedEdges = CurrentLevel.Objects
+				.Where(x =>
+				{
+					if(x is Edge edge)
+					{
+						return edge.A.Equals(vertex) || edge.B.Equals(vertex);
+					}
+					return false;
+				})
+				.ToList();
+			foreach (var edge in affectedEdges)
+			{
+				CurrentLevel.Objects.Remove(edge);
+			}
 		}
 
 		private void OnToolEdgeClicked(object sender, EventArgs e)
@@ -467,7 +506,7 @@ namespace LevelEditor2D
 
 			if(_keyboardState.WasKeyJustUp(Keys.Escape))
 			{
-				_selectedVertices.Clear();
+				_selectedObjects.Clear();
 			}
 
 			if (_mouseState.WasButtonJustDown(MouseButton.Left))
@@ -503,25 +542,25 @@ namespace LevelEditor2D
 		private void HandleEdgeTool(float worldX, float worldY)
 		{
 			var vertex = Vertex.Create(worldX, worldY);
-			_currentLevel.Vertices.Add(vertex);
+			_currentLevel.Objects.Add(vertex);
 
-			if(_selectedVertices.Count == 1)
+			if(_selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
-				var edge = new Edge(_selectedVertices[0], vertex);
-				_currentLevel.Edges.Add(edge);
+				var edge = Edge.Create(selectedVertex, vertex);
+				_currentLevel.Objects.Add(edge);
 			}
 
-			_selectedVertices.Clear();
-			_selectedVertices.Add(vertex);
+			_selectedObjects.Clear();
+			_selectedObjects.Add(vertex);
 			Console.WriteLine(vertex);
 		}
 
 		private void HandleVertexTool(float worldX, float worldY)
 		{
 			var vertex = Vertex.Create(worldX, worldY);
-			_currentLevel.Vertices.Add(vertex);
-			_selectedVertices.Clear();
-			_selectedVertices.Add(vertex);
+			_currentLevel.Objects.Add(vertex);
+			_selectedObjects.Clear();
+			_selectedObjects.Add(vertex);
 			Console.WriteLine(vertex);
 		}
 
@@ -529,63 +568,71 @@ namespace LevelEditor2D
 		{
 			var selectMultiple = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
 
-			var selectedVertex = CurrentLevel.Vertices.FirstOrDefault(v =>
+			var selectedVertex = CurrentLevel.Objects.FirstOrDefault(x =>
 			{
-				var deltaX = Math.Abs(v.X - worldX);
-				var deltaY = Math.Abs(v.Y - worldY);
-				var dist = deltaX * deltaX + deltaY * deltaY;
-				return dist <= Global.SelectionDistanceToleranceSquared;
+				if(x is Vertex vertex)
+				{
+					var deltaX = Math.Abs(vertex.X - worldX);
+					var deltaY = Math.Abs(vertex.Y - worldY);
+					var dist = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+					return dist <= Global.VertexSelectionDistanceTolerance;
+				}
+				return false;
 			});
 
 			if (selectedVertex != null)
 			{
-				if (_selectedVertices.Contains(selectedVertex))
+				if (_selectedObjects.Contains(selectedVertex))
 				{
-					_selectedVertices.Remove(selectedVertex);
+					_selectedObjects.Remove(selectedVertex);
 				}
 				else
 				{
 					if (!selectMultiple)
 					{
-						_selectedVertices.Clear();
+						_selectedObjects.Clear();
 					}
-					_selectedVertices.Add(selectedVertex);
+					_selectedObjects.Add(selectedVertex);
 				}
 				return;
 			}
 
-			//var selectedEdge = CurrentLevel.Edges.FirstOrDefault(e =>
-			//{
-			//	var deltaX1 = Math.Abs(e.A.X - worldX);
-			//	var deltaY1 = Math.Abs(e.A.Y - worldY);
-			//	var deltaX2 = Math.Abs(e.B.X - worldX);
-			//	var deltaY2 = Math.Abs(e.B.Y - worldY);
-			//	var dist1 = deltaX1 * deltaX1 + deltaY1 * deltaY1;
-			//	var dist2 = deltaX2 * deltaX2 + deltaY2 * deltaY2;
-			//	var edgeDistX = Math.Abs(e.A.X - e.B.X);
-			//	var edgeDistY = Math.Abs(e.A.Y - e.B.Y);
-			//	var edgeLength = edgeDistX * edgeDistX + edgeDistY + edgeDistY;
-			//	return Math.Abs(dist1 + dist2 - edgeLength) <= Global.SelectionDistanceToleranceSquared;
-			//});
+			var selectedEdge = CurrentLevel.Objects.FirstOrDefault(x =>
+			{
+				if(x is Edge edge)
+				{
+					var deltaX1 = Math.Abs(edge.A.X - worldX);
+					var deltaY1 = Math.Abs(edge.A.Y - worldY);
+					var deltaX2 = Math.Abs(edge.B.X - worldX);
+					var deltaY2 = Math.Abs(edge.B.Y - worldY);
+					var dist1 = Math.Sqrt(deltaX1 * deltaX1 + deltaY1 * deltaY1);
+					var dist2 = Math.Sqrt(deltaX2 * deltaX2 + deltaY2 * deltaY2);
+					var edgeDistX = Math.Abs(edge.A.X - edge.B.X);
+					var edgeDistY = Math.Abs(edge.A.Y - edge.B.Y);
+					var edgeLength = Math.Sqrt(edgeDistX * edgeDistX + edgeDistY * edgeDistY);
+					return Math.Abs(dist1 + dist2 - edgeLength) <= Global.EdgeSelectionDistanceTolerance;
+				}
+				return false;
+			});
 
-			//if (selectedEdge != null)
-			//{
-			//	if (_selectedVertices.Contains(selectedVertex))
-			//	{
-			//		_selectedVertices.Remove(selectedVertex);
-			//	}
-			//	else
-			//	{
-			//		if (!selectMultiple)
-			//		{
-			//			_selectedVertices.Clear();
-			//		}
-			//		_selectedVertices.Add(selectedVertex);
-			//	}
-			//	return;
-			//}
+			if (selectedEdge != null)
+			{
+				if (_selectedObjects.Contains(selectedEdge))
+				{
+					_selectedObjects.Remove(selectedEdge);
+				}
+				else
+				{
+					if (!selectMultiple)
+					{
+						_selectedObjects.Clear();
+					}
+					_selectedObjects.Add(selectedEdge);
+				}
+				return;
+			}
 
-			_selectedVertices.Clear();
+			_selectedObjects.Clear();
 		}
 
 		private void UpdateWindowTitle()
@@ -632,31 +679,32 @@ namespace LevelEditor2D
 			}
 
 			// render vertices
-			foreach (var vertex in _currentLevel.Vertices)
+			foreach (var gameObject in _currentLevel.Objects)
 			{
-				Color vertexColor = Global.EditorPreferences.VertexColor;
-				if(_selectedVertices.Contains(vertex))
+				if(gameObject is Vertex vertex)
 				{
-					vertexColor = Global.EditorPreferences.SelectedVertexColor;
+					Color vertexColor = Global.EditorPreferences.VertexColor;
+					if (_selectedObjects.Contains(vertex))
+					{
+						vertexColor = Global.EditorPreferences.SelectedVertexColor;
+					}
+					var normalizedX = vertex.X / _zoomLevel;
+					var normalizedY = vertex.Y / _zoomLevel;
+					_spriteBatch.DrawPoint(normalizedX, normalizedY, vertexColor, Global.VertexRenderSize);
 				}
-				var normalizedX = vertex.X / _zoomLevel;
-				var normalizedY = vertex.Y / _zoomLevel;
-				_spriteBatch.DrawPoint(normalizedX, normalizedY, vertexColor, Global.VertexRenderSize);
-			}
-
-			// render edges
-			foreach (var edge in _currentLevel.Edges)
-			{
-				Color edgeColor = Global.EditorPreferences.EdgeColor;
-				//if (_selectedVertices.Contains(vertex))
-				//{
-				//	vertexColor = Global.EditorPreferences.SelectedVertexColor;
-				//}
-				var normalizedX1 = edge.A.X / _zoomLevel;
-				var normalizedY1 = edge.A.Y / _zoomLevel;
-				var normalizedX2 = edge.B.X / _zoomLevel;
-				var normalizedY2 = edge.B.Y / _zoomLevel;
-				_spriteBatch.DrawLine(normalizedX1, normalizedY1, normalizedX2, normalizedY2, edgeColor, Global.EdgeRenderSize);
+				else if(gameObject is Edge edge)
+				{
+					Color edgeColor = Global.EditorPreferences.EdgeColor;
+					if (_selectedObjects.Contains(edge))
+					{
+						edgeColor = Global.EditorPreferences.SelectedEdgeColor;
+					}
+					var normalizedX1 = edge.A.X / _zoomLevel;
+					var normalizedY1 = edge.A.Y / _zoomLevel;
+					var normalizedX2 = edge.B.X / _zoomLevel;
+					var normalizedY2 = edge.B.Y / _zoomLevel;
+					_spriteBatch.DrawLine(normalizedX1, normalizedY1, normalizedX2, normalizedY2, edgeColor, Global.EdgeRenderSize);
+				}
 			}
 
 			// in in vertex or edge mode, render potentially placed vertex
@@ -666,9 +714,9 @@ namespace LevelEditor2D
 			//}
 
 			// in in edge mode, render potentially placed edge
-			if (_selectedTool == Tool.Edge && _selectedVertices.Count == 1)
+			if (_selectedTool == Tool.Edge && _selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
-				_spriteBatch.DrawLine(_selectedVertices[0].X, _selectedVertices[0].Y, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
+				_spriteBatch.DrawLine(selectedVertex.X, selectedVertex.Y, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
 			}
 
 			_spriteBatch.End();
