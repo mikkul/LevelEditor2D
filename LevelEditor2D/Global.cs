@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System;
+using System.Linq;
 
 namespace LevelEditor2D
 {
@@ -11,6 +12,7 @@ namespace LevelEditor2D
 		public const int DefaultGridCellSize = 32;
 		public const float SelectionDistanceTolerance = 10;
 		public const float VertexRenderSize = 10;
+		public const float EdgeRenderSize = 5;
 
 		public static float SelectionDistanceToleranceSquared
 		{
@@ -29,6 +31,24 @@ namespace LevelEditor2D
 			}
 		}
 
+		private static int _idCounter;
+
 		public static EditorPreferences EditorPreferences { get; set; }
+
+		public static void InitIds(Level level)
+		{
+			if(level.Vertices.Count == 0)
+			{
+				_idCounter = 0;
+				return;
+			}
+
+			_idCounter = level.Vertices.Max(v => v.Id);
+		}
+
+		public static int GetUniqueId()
+		{
+			return ++_idCounter;
+		}
 	}
 }

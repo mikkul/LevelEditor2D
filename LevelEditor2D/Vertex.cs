@@ -1,26 +1,32 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 
 namespace LevelEditor2D
 {
-	public class Vertex : IEquatable<Vertex>
+	public class Vertex : GameObject, IEquatable<Vertex>
 	{
-		public Vertex()
+		private Vertex()
 		{
 		}
 
-		public Vertex(float x, float y)
+		private Vertex(float x, float y, int id)
 		{
 			X = x;
 			Y = y;
+			Id = id;
 		}
 
+		public int Id { get; set; }
 		public float X { get; set; }
 		public float Y { get; set; }
 
-		public bool Equals([AllowNull] Vertex other)
+		public static Vertex Create(float x, float y)
 		{
-			return X == other.X && Y == other.Y;
+			return new Vertex(x, y, Global.GetUniqueId());
+		}
+
+		public bool Equals(Vertex other)
+		{
+			return Id == other.Id;
 		}
 
 		public override string ToString()

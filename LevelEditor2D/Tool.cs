@@ -3,6 +3,7 @@
 	enum Tool
 	{
 		Select,
-		Add,
+		Vertex,
+		Edge,
 	}
 }
