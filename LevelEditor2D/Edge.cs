@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Xml.Serialization;
 
 namespace LevelEditor2D
 {
@@ -12,12 +13,21 @@ namespace LevelEditor2D
 		{
 			A = a;
 			B = b;
+			VertexAId = A.Id;
+			VertexBId = B.Id;
 		}
 
 		[Browsable(false)]
+		[XmlIgnore]
 		public Vertex A { get; set; }
 		[Browsable(false)]
+		[XmlIgnore]
 		public Vertex B { get; set; }
+
+		[Browsable(false)]
+		public int VertexAId { get; set; }
+		[Browsable(false)]
+		public int VertexBId { get; set; }
 
 		public static Edge Create(Vertex a, Vertex b)
 		{

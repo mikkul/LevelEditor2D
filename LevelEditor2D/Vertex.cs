@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Xml.Serialization;
 
 namespace LevelEditor2D
 {
@@ -16,6 +17,7 @@ namespace LevelEditor2D
 
 		public float X { get; set; }
 		public float Y { get; set; }
+		[XmlIgnore]
 		public List<Edge> ConnectedEdges { get; set; } = new List<Edge>();
 
 		public static Vertex Create(float x, float y)

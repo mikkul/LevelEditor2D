@@ -52,7 +52,7 @@ namespace LevelEditor2D
 			}
 			private set
 			{
-				_currentLevel = value;
+				_currentLevel = ReconstructLevel(value);
 				_unmodifiedLevel = Level.Clone(_currentLevel);
 				Global.InitIds(_currentLevel);
 				_undoHistory.Clear();
@@ -133,6 +133,20 @@ namespace LevelEditor2D
 			_redoHistory = new Stack<Level>();
 
 			base.Initialize();
+		}
+
+		private Level ReconstructLevel(Level value)
+		{
+			var newLevel = Level.Clone(value);
+			foreach (var gameObject in newLevel.Objects)
+			{
+				if(gameObject is Edge edge)
+				{
+					edge.A = (Vertex)newLevel.Objects.Single(x => x.Id == edge.VertexAId);
+					edge.B = (Vertex)newLevel.Objects.Single(x => x.Id == edge.VertexBId);
+				}
+			}
+			return newLevel;
 		}
 
 		private void SaveLevelState()
@@ -246,10 +260,13 @@ namespace LevelEditor2D
 			menuFileExit.Selected += OnFileExitClicked;
 
 			var menuEditUndo = _topMenu.FindMenuItemById("menu-edit-undo");
-			menuEditUndo.Selected += OnEditUndo;
+			menuEditUndo.Selected += OnEditUndoClicked;
 
 			var menuEditRedo = _topMenu.FindMenuItemById("menu-edit-redo");
-			menuEditRedo.Selected += OnEditRedo;
+			menuEditRedo.Selected += OnEditRedoClicked;
+
+			var menuEditSelectAll = _topMenu.FindMenuItemById("menu-edit-select-all");
+			menuEditSelectAll.Selected += OnEditSelectAllClicked;
 
 			var menuEditPreferences = _topMenu.FindMenuItemById("menu-edit-preferences");
 			menuEditPreferences.Selected += OnEditPreferencesClicked;
@@ -291,7 +308,17 @@ namespace LevelEditor2D
 			toolEdgeButton.Click += OnToolEdgeClicked;
 		}
 
-		private void OnEditRedo(object sender, EventArgs e)
+		private void OnEditSelectAllClicked(object sender, EventArgs e)
+		{
+			Console.WriteLine("select all");
+			_selectedObjects.Clear();
+			foreach (var gameObject in CurrentLevel.Objects)
+			{
+				_selectedObjects.Add(gameObject);
+			}
+		}
+
+		private void OnEditRedoClicked(object sender, EventArgs e)
 		{
 			if (_redoHistory.Count == 0)
 			{
@@ -303,7 +330,7 @@ namespace LevelEditor2D
 			_undoHistory.Push(Level.Clone(_currentLevel));
 		}
 
-		private void OnEditUndo(object sender, EventArgs e)
+		private void OnEditUndoClicked(object sender, EventArgs e)
 		{
 			if(_undoHistory.Count == 0)
 			{
@@ -395,21 +422,24 @@ namespace LevelEditor2D
 
 		private void OnToolEdgeClicked(object sender, EventArgs e)
 		{
-			OnToolSelected((TextButton)sender);
+			var toolEdgeButton = GetWidget<TextButton>("tool-edge");
+			OnToolSelected(toolEdgeButton);
 			_selectedTool = Tool.Edge;
 			Console.WriteLine(_selectedTool);
 		}
 
 		private void OnToolVertexClicked(object sender, EventArgs e)
 		{
-			OnToolSelected((TextButton)sender);
+			var toolVertexButton = GetWidget<TextButton>("tool-vertex");
+			OnToolSelected(toolVertexButton);
 			_selectedTool = Tool.Vertex;
 			Console.WriteLine(_selectedTool);
 		}
 
 		private void OnToolSelectClicked(object sender, EventArgs e)
 		{
-			OnToolSelected((TextButton)sender);
+			var toolSelectButton = GetWidget<TextButton>("tool-select");
+			OnToolSelected(toolSelectButton);
 			_selectedTool = Tool.Select;
 			Console.WriteLine(_selectedTool);
 		}
@@ -592,28 +622,66 @@ namespace LevelEditor2D
 			{
 				OnPropertiesDeleteObjectButtonClicked(null, EventArgs.Empty);
 			}
-
-			if(_keyboardState.WasKeyJustUp(Keys.Escape))
+			else if(_keyboardState.WasKeyJustUp(Keys.Escape))
 			{
 				_selectedObjects.Clear();
 			}
 
+			else if(_keyboardState.WasKeyJustUp(Keys.S))
+			{
+				OnToolSelectClicked(null, EventArgs.Empty);
+			}
+			else if(_keyboardState.WasKeyJustUp(Keys.V))
+			{
+				OnToolVertexClicked(null, EventArgs.Empty);
+			}
+			else if(_keyboardState.WasKeyJustUp(Keys.E))
+			{
+				OnToolEdgeClicked(null, EventArgs.Empty);
+			}
+
 			if(_keyboardState.IsControlDown())
 			{
-				if(_keyboardState.WasKeyJustUp(Keys.Z))
+				if (_keyboardState.IsShiftDown())
 				{
-					OnEditUndo(null, EventArgs.Empty);
+					if (_keyboardState.WasKeyJustUp(Keys.S))
+					{
+						OnFileSaveAsClicked(null, EventArgs.Empty);
+					}
 				}
-				else if(_keyboardState.WasKeyJustUp(Keys.Y))
+				else
 				{
-					OnEditRedo(null, EventArgs.Empty);
+					if (_keyboardState.WasKeyJustUp(Keys.Z))
+					{
+						OnEditUndoClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.Y))
+					{
+						OnEditRedoClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.A))
+					{
+						OnEditSelectAllClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.N))
+					{
+						OnFileNewClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.O))
+					{
+						OnFileOpenClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.S))
+					{
+						OnFileSaveClicked(null, EventArgs.Empty);
+					}
+					else if (_keyboardState.WasKeyJustUp(Keys.E))
+					{
+						OnFileExitClicked(null, EventArgs.Empty);
+					}
 				}
 			}
 
-			//if (_mouseState.WasButtonJustDown(MouseButton.Left))
-			//{
-			//	HandleTools(_mouseState, _keyboardState);
-			//}
 			HandleTools();
 		}
 
@@ -682,14 +750,35 @@ namespace LevelEditor2D
 
 		private void HandleSelectTool(float worldX, float worldY)
 		{
-			if (_mouseState.WasButtonJustDown(MouseButton.Left))
+			if (_mouseState.WasButtonJustDown(MouseButton.Left) || _mouseState.WasButtonJustDown(MouseButton.Right))
 			{
 				SelectToolSingle(worldX, worldY);
 				_lastClickPosition = _mouseState.Position;
 			}
-			else if(_mouseState.WasButtonJustUp(MouseButton.Left) && _mouseState.Position != _lastClickPosition)
+			else if(_mouseState.IsButtonDown(MouseButton.Left))
+			{
+				SelectToolMove();
+			}
+			else if(_mouseState.WasButtonJustUp(MouseButton.Left) && _mouseState.Position != _lastClickPosition && _selectedObjects.Count == 0)
 			{
 				SelectToolDrag(worldX, worldY);
+			}
+		}
+
+		private void SelectToolMove()
+		{
+			if(_selectedObjects.Count == 0 || _mouseState.DeltaPosition == Point.Zero)
+			{
+				return;
+			}
+
+			foreach (var gameObject in _selectedObjects)
+			{
+				if(gameObject is Vertex vertex)
+				{
+					vertex.X += -_mouseState.DeltaX * _zoomLevel;
+					vertex.Y += -_mouseState.DeltaY * _zoomLevel;
+				}
 			}
 		}
 
@@ -733,13 +822,15 @@ namespace LevelEditor2D
 				return false;
 			});
 
+			bool deselect = _mouseState.WasButtonJustDown(MouseButton.Right);
+
 			if (selectedVertex != null)
 			{
-				if (_selectedObjects.Contains(selectedVertex))
+				if (deselect)
 				{
 					_selectedObjects.Remove(selectedVertex);
 				}
-				else
+				else if(!_selectedObjects.Contains(selectedVertex))
 				{
 					if (!selectMultiple)
 					{
@@ -770,7 +861,7 @@ namespace LevelEditor2D
 
 			if (selectedEdge != null)
 			{
-				if (_selectedObjects.Contains(selectedEdge))
+				if (deselect)
 				{
 					_selectedObjects.Remove(selectedEdge);
 				}
@@ -869,11 +960,13 @@ namespace LevelEditor2D
 			// in in edge mode, render potentially placed edge
 			if (_selectedTool == Tool.Edge && _selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
-				_spriteBatch.DrawLine(selectedVertex.X, selectedVertex.Y, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
+				var normalizedVertexX = selectedVertex.X / _zoomLevel;
+				var normalizedVertexY = selectedVertex.Y / _zoomLevel;
+				_spriteBatch.DrawLine(normalizedVertexX, normalizedVertexY, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
 			}
 
 			// render selection rectangle
-			if(_selectedTool == Tool.Select && _mouseState.IsButtonDown(MouseButton.Left))
+			if(_selectedTool == Tool.Select && _mouseState.IsButtonDown(MouseButton.Left) && _selectedObjects.Count == 0)
 			{
 				float rectX = Math.Min(_lastClickPosition.X, _mouseState.Position.X);
 				float rectY = Math.Min(_lastClickPosition.Y, _mouseState.Position.Y);
