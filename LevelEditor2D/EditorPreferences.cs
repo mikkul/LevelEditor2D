@@ -18,6 +18,7 @@ namespace LevelEditor2D
 		private Color _toolbarButtonHoverBackground;
 		private Color _edgeColor;
 		private Color _selectedEdgeColor;
+		private Color _toolbarButtonSelectedBackground;
 
 		public static string StateFilePath
 		{
@@ -31,6 +32,7 @@ namespace LevelEditor2D
 		public event EventHandler SidebarBackgroundChanged;
 		public event EventHandler ToolbarButtonBackgroundChanged;
 		public event EventHandler ToolbarButtonHoverBackgroundChanged;
+		public event EventHandler ToolbarButtonSelectedBackgroundChanged;
 
 		[DisplayName("Background color")]
 		public Color BackgroundColor
@@ -80,6 +82,16 @@ namespace LevelEditor2D
 				ToolbarButtonHoverBackgroundChanged?.Invoke(this, EventArgs.Empty);
 			}
 		}
+		[DisplayName("Toolbar button selected background")]
+		public Color ToolbarButtonSelectedBackground 
+		{ 
+			get => _toolbarButtonSelectedBackground;
+			set
+			{
+				_toolbarButtonSelectedBackground = value;
+				ToolbarButtonSelectedBackgroundChanged?.Invoke(this, EventArgs.Empty);
+			}
+		}
 		[DisplayName("Vertex color")]
 		public Color VertexColor
 		{
@@ -99,9 +111,9 @@ namespace LevelEditor2D
 			set => _edgeColor = value;
 		}
 		[DisplayName("Selected edge color")]
-		public Color SelectedEdgeColor 
-		{ 
-			get => _selectedEdgeColor; 
+		public Color SelectedEdgeColor
+		{
+			get => _selectedEdgeColor;
 			set => _selectedEdgeColor = value;
 		}
 

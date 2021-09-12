@@ -1,4 +1,6 @@
-﻿namespace LevelEditor2D
+﻿using System.Collections.Generic;
+
+namespace LevelEditor2D
 {
 	public class Vertex : GameObject
 	{
@@ -14,6 +16,7 @@
 
 		public float X { get; set; }
 		public float Y { get; set; }
+		public List<Edge> ConnectedEdges { get; set; } = new List<Edge>();
 
 		public static Vertex Create(float x, float y)
 		{

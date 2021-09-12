@@ -6,13 +6,24 @@ namespace LevelEditor2D
 {
 	public class Level : IEquatable<Level>
 	{
+		public event EventHandler Modified;
+
 		public List<GameObject> Objects { get; set; } = new List<GameObject>();
+
+		public Level()
+		{
+		}
+
+		private void OnModified()
+		{
+			Modified?.Invoke(this, EventArgs.Empty);
+		}
 
 		public static Level Clone(Level level)
 		{
 			return new Level
 			{
-				Objects = new List<GameObject>(level.Objects),
+				Objects = new List<GameObject>(level.Objects.ToList()),
 			};
 		}
 

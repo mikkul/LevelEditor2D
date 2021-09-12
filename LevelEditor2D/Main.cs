@@ -11,6 +11,7 @@ using Myra.Graphics2D.UI.File;
 using Myra.Graphics2D.UI.Properties;
 using Myra.MML;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -39,6 +40,9 @@ namespace LevelEditor2D
 		private float _zoomLevel;
 		private Tool _selectedTool;
 		private ObservableCollection<GameObject> _selectedObjects;
+		private Point _lastClickPosition;
+		private Stack<Level> _undoHistory;
+		private Stack<Level> _redoHistory;
 
 		public Level CurrentLevel
 		{
@@ -49,8 +53,10 @@ namespace LevelEditor2D
 			private set
 			{
 				_currentLevel = value;
-				_unmodifiedLevel = Level.Clone(value);
-				Global.InitIds(value);
+				_unmodifiedLevel = Level.Clone(_currentLevel);
+				Global.InitIds(_currentLevel);
+				_undoHistory.Clear();
+				SaveLevelState();
 			}
 		}
 
@@ -123,8 +129,17 @@ namespace LevelEditor2D
 			_selectedObjects.Cleared += OnSelectedVerticesCleared;
 			_selectedObjects.ItemAdded += OnSelectedVerticesItemAdded;
 			_selectedObjects.ItemRemoved += OnSelectedVerticesItemRemoved;
+			_undoHistory = new Stack<Level>();
+			_redoHistory = new Stack<Level>();
 
 			base.Initialize();
+		}
+
+		private void SaveLevelState()
+		{
+			Console.WriteLine("state modified");
+			_undoHistory.Push(Level.Clone(CurrentLevel));
+			_redoHistory.Clear();
 		}
 
 		private void OnSelectedVerticesItemRemoved(object sender, ItemEventArgs<GameObject> e)
@@ -230,6 +245,12 @@ namespace LevelEditor2D
 			var menuFileExit = _topMenu.FindMenuItemById("menu-file-exit");
 			menuFileExit.Selected += OnFileExitClicked;
 
+			var menuEditUndo = _topMenu.FindMenuItemById("menu-edit-undo");
+			menuEditUndo.Selected += OnEditUndo;
+
+			var menuEditRedo = _topMenu.FindMenuItemById("menu-edit-redo");
+			menuEditRedo.Selected += OnEditRedo;
+
 			var menuEditPreferences = _topMenu.FindMenuItemById("menu-edit-preferences");
 			menuEditPreferences.Selected += OnEditPreferencesClicked;
 
@@ -242,7 +263,13 @@ namespace LevelEditor2D
 
 			Global.EditorPreferences.SidebarBackgroundChanged += OnEditorPreferencesSidebarBackgroundColorChanged;
 
-			var toolbarPanel = GetWidget<Panel>("toolbar-panel");
+			var toolbarPanel = GetWidget<VerticalStackPanel>("toolbar-panel");
+			Global.EditorPreferences.ToolbarButtonBackgroundChanged += OnEditorPreferencesToolbarBackgroundChanged;
+			Global.EditorPreferences.ToolbarButtonHoverBackgroundChanged += OnEditorPreferencesToolbarHoverBackgroundChanged;
+			OnEditorPreferencesToolbarBackgroundChanged(null, EventArgs.Empty);
+			OnEditorPreferencesToolbarHoverBackgroundChanged(null, EventArgs.Empty);
+			OnToolSelected((TextButton)toolbarPanel.Widgets[0]);
+
 			var propertiesPanel = GetWidget<VerticalStackPanel>("properties-panel");
 
 			_objectPropertiesPropGrid = new PropertyGrid
@@ -264,6 +291,47 @@ namespace LevelEditor2D
 			toolEdgeButton.Click += OnToolEdgeClicked;
 		}
 
+		private void OnEditRedo(object sender, EventArgs e)
+		{
+			if (_redoHistory.Count == 0)
+			{
+				return;
+			}
+
+			Console.WriteLine("redo");
+			_currentLevel = _redoHistory.Pop();
+			_undoHistory.Push(Level.Clone(_currentLevel));
+		}
+
+		private void OnEditUndo(object sender, EventArgs e)
+		{
+			if(_undoHistory.Count == 0)
+			{
+				return;
+			}
+			Console.WriteLine("undo");
+			_currentLevel = _undoHistory.Pop();
+			_redoHistory.Push(Level.Clone(_currentLevel));
+		}
+
+		private void OnEditorPreferencesToolbarHoverBackgroundChanged(object sender, EventArgs e)
+		{
+			var toolbarPanel = GetWidget<VerticalStackPanel>("toolbar-panel");
+			foreach (TextButton button in toolbarPanel.Widgets)
+			{
+				button.OverBackground = new SolidBrush(Global.EditorPreferences.ToolbarButtonHoverBackground);
+			}
+		}
+
+		private void OnEditorPreferencesToolbarBackgroundChanged(object sender, EventArgs e)
+		{
+			var toolbarPanel = GetWidget<VerticalStackPanel>("toolbar-panel");
+			foreach (TextButton button in toolbarPanel.Widgets)
+			{
+				button.Background = new SolidBrush(Global.EditorPreferences.ToolbarButtonBackground);
+			}
+		}
+
 		private void OnPropertiesDeleteObjectButtonClicked(object sender, EventArgs e)
 		{
 			foreach (var gameObject in _selectedObjects)
@@ -279,6 +347,7 @@ namespace LevelEditor2D
 				}
 			}
 			_selectedObjects.Clear();
+			SaveLevelState();
 		}
 
 		private void DeleteEdge(Edge edge)
@@ -293,9 +362,16 @@ namespace LevelEditor2D
 					return false;
 				})
 				.ToList();
-			foreach (var vertex in affectedVertices)
+			foreach (Vertex vertex in affectedVertices)
 			{
-				CurrentLevel.Objects.Remove(vertex);
+				if(vertex.ConnectedEdges.Count > 1)
+				{
+					CurrentLevel.Objects.Remove(vertex);
+				}
+				else
+				{
+					vertex.ConnectedEdges.Remove(edge);
+				}
 			}
 		}
 
@@ -319,25 +395,38 @@ namespace LevelEditor2D
 
 		private void OnToolEdgeClicked(object sender, EventArgs e)
 		{
+			OnToolSelected((TextButton)sender);
 			_selectedTool = Tool.Edge;
 			Console.WriteLine(_selectedTool);
 		}
 
 		private void OnToolVertexClicked(object sender, EventArgs e)
 		{
+			OnToolSelected((TextButton)sender);
 			_selectedTool = Tool.Vertex;
 			Console.WriteLine(_selectedTool);
 		}
 
 		private void OnToolSelectClicked(object sender, EventArgs e)
 		{
+			OnToolSelected((TextButton)sender);
 			_selectedTool = Tool.Select;
 			Console.WriteLine(_selectedTool);
 		}
 
+		private void OnToolSelected(TextButton toolButton)
+		{
+			var toolbarPanel = GetWidget<VerticalStackPanel>("toolbar-panel");
+			foreach (TextButton button in toolbarPanel.Widgets)
+			{
+				button.Background = new SolidBrush(Global.EditorPreferences.ToolbarButtonBackground);
+			}
+			toolButton.Background = new SolidBrush(Global.EditorPreferences.ToolbarButtonSelectedBackground);
+		}
+
 		private void OnEditorPreferencesSidebarBackgroundColorChanged(object sender, EventArgs e)
 		{
-			var toolbarPanel = GetWidget<Panel>("toolbar-panel");
+			var toolbarPanel = GetWidget<VerticalStackPanel>("toolbar-panel");
 			var propertiesPanel = GetWidget<VerticalStackPanel>("properties-panel");
 			toolbarPanel.Background = new SolidBrush(Global.EditorPreferences.SidebarBackground);
 			propertiesPanel.Background = new SolidBrush(Global.EditorPreferences.SidebarBackground);
@@ -509,25 +598,38 @@ namespace LevelEditor2D
 				_selectedObjects.Clear();
 			}
 
-			if (_mouseState.WasButtonJustDown(MouseButton.Left))
+			if(_keyboardState.IsControlDown())
 			{
-				HandleTools(_mouseState, _keyboardState);
+				if(_keyboardState.WasKeyJustUp(Keys.Z))
+				{
+					OnEditUndo(null, EventArgs.Empty);
+				}
+				else if(_keyboardState.WasKeyJustUp(Keys.Y))
+				{
+					OnEditRedo(null, EventArgs.Empty);
+				}
 			}
+
+			//if (_mouseState.WasButtonJustDown(MouseButton.Left))
+			//{
+			//	HandleTools(_mouseState, _keyboardState);
+			//}
+			HandleTools();
 		}
 
-		private void HandleTools(MouseStateExtended mouseState, KeyboardStateExtended keyboardState)
+		private void HandleTools()
 		{
-			if (!_editorAreaPanel.ActualBounds.Contains(mouseState.Position) || _topMenu.IsOpen || _isPopupActive)
+			if (!_editorAreaPanel.ActualBounds.Contains(_mouseState.Position) || _topMenu.IsOpen || _isPopupActive)
 			{
 				return;
 			}
 
-			var worldX = mouseState.Position.X * _zoomLevel;
-			var worldY = mouseState.Position.Y * _zoomLevel;
+			var worldX = _mouseState.Position.X * _zoomLevel;
+			var worldY = _mouseState.Position.Y * _zoomLevel;
 
 			if (_selectedTool == Tool.Select)
 			{
-				HandleSelectTool(keyboardState, worldX, worldY);
+				HandleSelectTool(worldX, worldY);
 			}
 			else if(_selectedTool == Tool.Vertex)
 			{
@@ -541,6 +643,11 @@ namespace LevelEditor2D
 
 		private void HandleEdgeTool(float worldX, float worldY)
 		{
+			if(!_mouseState.WasButtonJustDown(MouseButton.Left))
+			{
+				return;
+			}
+
 			var vertex = Vertex.Create(worldX, worldY);
 			_currentLevel.Objects.Add(vertex);
 
@@ -548,29 +655,75 @@ namespace LevelEditor2D
 			{
 				var edge = Edge.Create(selectedVertex, vertex);
 				_currentLevel.Objects.Add(edge);
+				vertex.ConnectedEdges.Add(edge);
+				selectedVertex.ConnectedEdges.Add(edge);
 			}
 
 			_selectedObjects.Clear();
 			_selectedObjects.Add(vertex);
 			Console.WriteLine(vertex);
+			SaveLevelState();
 		}
 
 		private void HandleVertexTool(float worldX, float worldY)
 		{
+			if (!_mouseState.WasButtonJustDown(MouseButton.Left))
+			{
+				return;
+			}
+
 			var vertex = Vertex.Create(worldX, worldY);
 			_currentLevel.Objects.Add(vertex);
 			_selectedObjects.Clear();
 			_selectedObjects.Add(vertex);
 			Console.WriteLine(vertex);
+			SaveLevelState();
 		}
 
-		private void HandleSelectTool(KeyboardStateExtended keyboardState, float worldX, float worldY)
+		private void HandleSelectTool(float worldX, float worldY)
 		{
-			var selectMultiple = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+			if (_mouseState.WasButtonJustDown(MouseButton.Left))
+			{
+				SelectToolSingle(worldX, worldY);
+				_lastClickPosition = _mouseState.Position;
+			}
+			else if(_mouseState.WasButtonJustUp(MouseButton.Left) && _mouseState.Position != _lastClickPosition)
+			{
+				SelectToolDrag(worldX, worldY);
+			}
+		}
+
+		private void SelectToolDrag(float worldX, float worldY)
+		{
+			float lastClickPositionWorldX = _lastClickPosition.X * _zoomLevel;
+			float lastClickPositionWorldY = _lastClickPosition.Y * _zoomLevel;
+			float rectX = Math.Min(lastClickPositionWorldX, worldX);
+			float rectY = Math.Min(lastClickPositionWorldY, worldY);
+			float rectWidth = Math.Max(lastClickPositionWorldX - worldX, worldX - lastClickPositionWorldX);
+			float rectHeight = Math.Max(lastClickPositionWorldY - worldY, worldY - lastClickPositionWorldY);
+			var rect = new RectangleF(rectX, rectY, rectWidth, rectHeight);
+			var selectedObjects = CurrentLevel.Objects.Where(x =>
+			{
+				if(x is Vertex vertex)
+				{
+					return rect.Contains(new Point2(vertex.X, vertex.Y));
+				}
+				return false;
+			});
+			_selectedObjects.Clear();
+			foreach (var selectedObject in selectedObjects)
+			{
+				_selectedObjects.Add(selectedObject);
+			}
+		}
+
+		private void SelectToolSingle(float worldX, float worldY)
+		{
+			var selectMultiple = _keyboardState.IsKeyDown(Keys.LeftShift) || _keyboardState.IsKeyDown(Keys.RightShift);
 
 			var selectedVertex = CurrentLevel.Objects.FirstOrDefault(x =>
 			{
-				if(x is Vertex vertex)
+				if (x is Vertex vertex)
 				{
 					var deltaX = Math.Abs(vertex.X - worldX);
 					var deltaY = Math.Abs(vertex.Y - worldY);
@@ -599,7 +752,7 @@ namespace LevelEditor2D
 
 			var selectedEdge = CurrentLevel.Objects.FirstOrDefault(x =>
 			{
-				if(x is Edge edge)
+				if (x is Edge edge)
 				{
 					var deltaX1 = Math.Abs(edge.A.X - worldX);
 					var deltaY1 = Math.Abs(edge.A.Y - worldY);
@@ -717,6 +870,17 @@ namespace LevelEditor2D
 			if (_selectedTool == Tool.Edge && _selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
 				_spriteBatch.DrawLine(selectedVertex.X, selectedVertex.Y, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
+			}
+
+			// render selection rectangle
+			if(_selectedTool == Tool.Select && _mouseState.IsButtonDown(MouseButton.Left))
+			{
+				float rectX = Math.Min(_lastClickPosition.X, _mouseState.Position.X);
+				float rectY = Math.Min(_lastClickPosition.Y, _mouseState.Position.Y);
+				float rectWidth = Math.Max(_lastClickPosition.X - _mouseState.Position.X, _mouseState.Position.X - _lastClickPosition.X);
+				float rectHeight = Math.Max(_lastClickPosition.Y - _mouseState.Position.Y, _mouseState.Position.Y - _lastClickPosition.Y);
+				var rect = new RectangleF(rectX, rectY, rectWidth, rectHeight);
+				_spriteBatch.DrawRectangle(rect, Color.White, 1);
 			}
 
 			_spriteBatch.End();
