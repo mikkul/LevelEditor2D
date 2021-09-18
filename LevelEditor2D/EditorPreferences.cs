@@ -19,6 +19,7 @@ namespace LevelEditor2D
 		private Color _edgeColor;
 		private Color _selectedEdgeColor;
 		private Color _toolbarButtonSelectedBackground;
+		private Color _hoveredVertexColor;
 
 		public static string StateFilePath
 		{
@@ -83,8 +84,8 @@ namespace LevelEditor2D
 			}
 		}
 		[DisplayName("Toolbar button selected background")]
-		public Color ToolbarButtonSelectedBackground 
-		{ 
+		public Color ToolbarButtonSelectedBackground
+		{
 			get => _toolbarButtonSelectedBackground;
 			set
 			{
@@ -103,6 +104,12 @@ namespace LevelEditor2D
 		{
 			get => _selectedVertexColor;
 			set => _selectedVertexColor = value;
+		}
+		[DisplayName("Hovered vertex color")]
+		public Color HoveredVertexColor 
+		{ 
+			get => _hoveredVertexColor; 
+			set => _hoveredVertexColor = value; 
 		}
 		[DisplayName("Edge color")]
 		public Color EdgeColor

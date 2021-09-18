@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MonoGame.Extended;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -6,6 +7,7 @@ namespace LevelEditor2D
 {
 	public class Level : IEquatable<Level>
 	{
+		public Point2 Scale { get; set; }
 		public List<GameObject> Objects { get; set; } = new List<GameObject>();
 
 		public Level()
@@ -16,7 +18,8 @@ namespace LevelEditor2D
 		{
 			return new Level
 			{
-				Objects = new List<GameObject>(level.Objects.ToList()),
+				Objects = level.Objects.ToList(),
+				Scale = level.Scale,
 			};
 		}
 

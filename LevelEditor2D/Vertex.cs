@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.Xna.Framework;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Xml.Serialization;
 
 namespace LevelEditor2D
@@ -19,6 +21,10 @@ namespace LevelEditor2D
 		public float Y { get; set; }
 		[XmlIgnore]
 		public List<Edge> ConnectedEdges { get; set; } = new List<Edge>();
+
+		[XmlIgnore]
+		[Browsable(false)]
+		public Vector2 Position => new Vector2(X, Y);
 
 		public static Vertex Create(float x, float y)
 		{

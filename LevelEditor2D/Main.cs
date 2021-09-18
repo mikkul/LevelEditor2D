@@ -27,7 +27,7 @@ namespace LevelEditor2D
 
 		private KeyboardStateExtended _keyboardState;
 		private MouseStateExtended _mouseState;
-
+		private bool _mouseIsInsideEditorPanel;
 		private Menu _topMenu;
 		private Window _editorPreferencesWindow;
 		private Panel _editorAreaPanel;
@@ -38,11 +38,14 @@ namespace LevelEditor2D
 		private Level _unmodifiedLevel;
 		private Level _currentLevel;
 		private float _zoomLevel;
+		private Vector2 _cameraOffset;
+		private Vector2 _actualCameraOffset;
 		private Tool _selectedTool;
 		private ObservableCollection<GameObject> _selectedObjects;
 		private Point _lastClickPosition;
 		private Stack<Level> _undoHistory;
 		private Stack<Level> _redoHistory;
+		private Vertex _hoveredVertex;
 
 		public Level CurrentLevel
 		{
@@ -140,7 +143,12 @@ namespace LevelEditor2D
 			var newLevel = Level.Clone(value);
 			foreach (var gameObject in newLevel.Objects)
 			{
-				if(gameObject is Edge edge)
+				if(gameObject is Vertex vertex)
+				{
+					vertex.X *= newLevel.Scale.X;
+					vertex.Y *= newLevel.Scale.Y;
+				}
+				else if(gameObject is Edge edge)
 				{
 					edge.A = (Vertex)newLevel.Objects.Single(x => x.Id == edge.VertexAId);
 					edge.B = (Vertex)newLevel.Objects.Single(x => x.Id == edge.VertexBId);
@@ -556,21 +564,27 @@ namespace LevelEditor2D
 
 		private void OpenFile(string filePath)
 		{
-			try
+			using (var stream = new StreamReader(filePath))
 			{
-				using (var stream = new StreamReader(filePath))
-				{
-					var serializer = new XmlSerializer(typeof(Level));
-					CurrentLevel = (Level)serializer.Deserialize(stream);
-				}
-				_openedFilePath = filePath;
+				var serializer = new XmlSerializer(typeof(Level));
+				CurrentLevel = (Level)serializer.Deserialize(stream);
 			}
-			catch(Exception e)
-			{
-				var errorDialog = Dialog.CreateMessageBox("Error", $"Couldn't open the specified file. \n {e.Message}");
-				errorDialog.ButtonCancel.Visible = false;
-				errorDialog.ShowModal(_desktop);
-			}
+			_openedFilePath = filePath;
+			//try
+			//{
+			//	using (var stream = new StreamReader(filePath))
+			//	{
+			//		var serializer = new XmlSerializer(typeof(Level));
+			//		CurrentLevel = (Level)serializer.Deserialize(stream);
+			//	}
+			//	_openedFilePath = filePath;
+			//}
+			//catch(Exception e)
+			//{
+			//	var errorDialog = Dialog.CreateMessageBox("Error", $"Couldn't open the specified file. \n {e.Message}");
+			//	errorDialog.ButtonCancel.Visible = false;
+			//	errorDialog.ShowModal(_desktop);
+			//}
 		}
 
 		private void SaveFile()
@@ -582,8 +596,33 @@ namespace LevelEditor2D
 		{
 			using (var stream = new StreamWriter(filePath, false))
 			{
+				var savedLevel = Level.Clone(_currentLevel);
+				// normalize vertex positions
+				var vertices = savedLevel.Objects.Where(x => x is Vertex).Cast<Vertex>();
+				var minX = vertices.Min(x => x.X);
+				var minY = vertices.Min(x => x.Y);
+				var maxX = vertices.Max(x => x.X);
+				var maxY = vertices.Max(x => x.Y);
+				var rangeX = maxX - minX;
+				var rangeY = maxY - minY;
+				for (int i = 0; i < savedLevel.Objects.Count; i++)
+				{
+					var vertex = savedLevel.Objects[i] as Vertex;
+					if(vertex == null)
+					{
+						continue;
+					}
+
+					var normalizedX = (vertex.X - minX) / rangeX;
+					var normalizedY = (vertex.Y - minY) / rangeY;
+					vertex.X = normalizedX;
+					vertex.Y = normalizedY;
+				}
+				savedLevel.Scale = new Point2(rangeX, rangeY);
+
+				// serialize the level object
 				var serializer = new XmlSerializer(typeof(Level));
-				serializer.Serialize(stream, _currentLevel);
+				serializer.Serialize(stream, savedLevel);
 			}
 			_openedFilePath = filePath;
 			_unmodifiedLevel = Level.Clone(_currentLevel);
@@ -605,6 +644,11 @@ namespace LevelEditor2D
 			_keyboardState = KeyboardExtended.GetState();
 			_mouseState = MouseExtended.GetState();
 
+			//Console.WriteLine(ScreenToWorldPosition(new Vector2(0, 0)));
+			//Console.WriteLine(ScreenToWorldPosition(new Vector2(_graphics.PreferredBackBufferWidth / 2, _graphics.PreferredBackBufferHeight / 2)));
+
+			_mouseIsInsideEditorPanel = _editorAreaPanel.ActualBounds.Contains(_mouseState.Position);
+
 			if (_keyboardState.IsKeyDown(Keys.Subtract))
 			{
 				_zoomLevel += 0.1f;
@@ -617,8 +661,9 @@ namespace LevelEditor2D
 					_zoomLevel = 0.1f;
 				}
 			}
+			//_actualCameraOffset = new Vector2(-_editorAreaPanel.ActualBounds.Width / 2, -_editorAreaPanel.ActualBounds.Height / 2) + _cameraOffset;
 
-			if(_keyboardState.WasKeyJustUp(Keys.Delete))
+			if (_keyboardState.WasKeyJustUp(Keys.Delete))
 			{
 				OnPropertiesDeleteObjectButtonClicked(null, EventArgs.Empty);
 			}
@@ -639,8 +684,12 @@ namespace LevelEditor2D
 			{
 				OnToolEdgeClicked(null, EventArgs.Empty);
 			}
+			else if (_keyboardState.WasKeyJustUp(Keys.R))
+			{
+				_zoomLevel = 1f;
+			}
 
-			if(_keyboardState.IsControlDown())
+			if (_keyboardState.IsControlDown())
 			{
 				if (_keyboardState.IsShiftDown())
 				{
@@ -682,31 +731,52 @@ namespace LevelEditor2D
 				}
 			}
 
+			if(_mouseState.IsButtonDown(MouseButton.Middle) && _mouseState.PositionChanged)
+			{
+				_cameraOffset += _mouseState.DeltaPosition.ToVector2();
+			}
+
 			HandleTools();
 		}
 
 		private void HandleTools()
 		{
-			if (!_editorAreaPanel.ActualBounds.Contains(_mouseState.Position) || _topMenu.IsOpen || _isPopupActive)
+			if (!_mouseIsInsideEditorPanel || _topMenu.IsOpen || _isPopupActive)
 			{
 				return;
 			}
 
-			var worldX = _mouseState.Position.X * _zoomLevel;
-			var worldY = _mouseState.Position.Y * _zoomLevel;
+			var worldPosition = ViewportToWorldPosition(_mouseState.Position.ToVector2());
+
+			HandleHover(worldPosition.X, worldPosition.Y);
 
 			if (_selectedTool == Tool.Select)
 			{
-				HandleSelectTool(worldX, worldY);
+				HandleSelectTool(worldPosition.X, worldPosition.Y);
 			}
 			else if(_selectedTool == Tool.Vertex)
 			{
-				HandleVertexTool(worldX, worldY);
+				HandleVertexTool(worldPosition.X, worldPosition.Y);
 			}
 			else if(_selectedTool == Tool.Edge)
 			{
-				HandleEdgeTool(worldX, worldY);
+				HandleEdgeTool(worldPosition.X, worldPosition.Y);
 			}
+		}
+
+		private void HandleHover(float worldX, float worldY)
+		{
+			_hoveredVertex = CurrentLevel.Objects.FirstOrDefault(x =>
+			{
+				if (x is Vertex vertex)
+				{
+					var deltaX = Math.Abs(vertex.X - worldX);
+					var deltaY = Math.Abs(vertex.Y - worldY);
+					var dist = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+					return dist <= Global.VertexSelectionDistanceTolerance;
+				}
+				return false;
+			}) as Vertex;
 		}
 
 		private void HandleEdgeTool(float worldX, float worldY)
@@ -716,20 +786,28 @@ namespace LevelEditor2D
 				return;
 			}
 
-			var vertex = Vertex.Create(worldX, worldY);
-			_currentLevel.Objects.Add(vertex);
+			Vertex newVertex;
+			if(_hoveredVertex != null)
+			{
+				newVertex = _hoveredVertex;
+			}
+			else
+			{
+				newVertex = Vertex.Create(worldX, worldY);
+				_currentLevel.Objects.Add(newVertex);
+			}
 
 			if(_selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
-				var edge = Edge.Create(selectedVertex, vertex);
+				var edge = Edge.Create(selectedVertex, newVertex);
 				_currentLevel.Objects.Add(edge);
-				vertex.ConnectedEdges.Add(edge);
+				newVertex.ConnectedEdges.Add(edge);
 				selectedVertex.ConnectedEdges.Add(edge);
 			}
 
 			_selectedObjects.Clear();
-			_selectedObjects.Add(vertex);
-			Console.WriteLine(vertex);
+			_selectedObjects.Add(newVertex);
+			Console.WriteLine(newVertex);
 			SaveLevelState();
 		}
 
@@ -776,20 +854,23 @@ namespace LevelEditor2D
 			{
 				if(gameObject is Vertex vertex)
 				{
-					vertex.X += -_mouseState.DeltaX * _zoomLevel;
-					vertex.Y += -_mouseState.DeltaY * _zoomLevel;
+					//var delta = ViewportToWorldPosition(-_mouseState.DeltaPosition.ToVector2());
+					//vertex.X += delta.X;
+					//vertex.Y += delta.Y;
+					var newWorldPos = ViewportToWorldPosition(_mouseState.Position.ToVector2());
+					vertex.X = newWorldPos.X;
+					vertex.Y = newWorldPos.Y;
 				}
 			}
 		}
 
 		private void SelectToolDrag(float worldX, float worldY)
 		{
-			float lastClickPositionWorldX = _lastClickPosition.X * _zoomLevel;
-			float lastClickPositionWorldY = _lastClickPosition.Y * _zoomLevel;
-			float rectX = Math.Min(lastClickPositionWorldX, worldX);
-			float rectY = Math.Min(lastClickPositionWorldY, worldY);
-			float rectWidth = Math.Max(lastClickPositionWorldX - worldX, worldX - lastClickPositionWorldX);
-			float rectHeight = Math.Max(lastClickPositionWorldY - worldY, worldY - lastClickPositionWorldY);
+			Vector2 lastClickWorldPosition = ViewportToWorldPosition(_lastClickPosition.ToVector2());
+			float rectX = Math.Min(lastClickWorldPosition.X, worldX);
+			float rectY = Math.Min(lastClickWorldPosition.Y, worldY);
+			float rectWidth = Math.Max(lastClickWorldPosition.X - worldX, worldX - lastClickWorldPosition.X);
+			float rectHeight = Math.Max(lastClickWorldPosition.Y - worldY, worldY - lastClickWorldPosition.Y);
 			var rect = new RectangleF(rectX, rectY, rectWidth, rectHeight);
 			var selectedObjects = CurrentLevel.Objects.Where(x =>
 			{
@@ -912,13 +993,13 @@ namespace LevelEditor2D
 			// horizontal lines
 			for (int i = 0; i < horizontalLineCount; i++)
 			{
-				float y = cellGridSize + cellGridSize * i;
+				float y = cellGridSize + cellGridSize * i + _cameraOffset.Y % cellGridSize;
 				_spriteBatch.DrawLine(0, y, windowWidth, y, Global.EditorPreferences.GridLinesColor);
 			}
 			// vertical lines
 			for (int i = 0; i < verticalLineCount; i++)
 			{
-				float x = cellGridSize + cellGridSize * i;
+				float x = cellGridSize + cellGridSize * i + _cameraOffset.X % cellGridSize;
 				_spriteBatch.DrawLine(x, 0, x, windowHeight, Global.EditorPreferences.GridLinesColor);
 			}
 
@@ -928,13 +1009,16 @@ namespace LevelEditor2D
 				if(gameObject is Vertex vertex)
 				{
 					Color vertexColor = Global.EditorPreferences.VertexColor;
-					if (_selectedObjects.Contains(vertex))
+					if(vertex == _hoveredVertex)
+					{
+						vertexColor = Global.EditorPreferences.HoveredVertexColor;
+					}
+					else if (_selectedObjects.Contains(vertex))
 					{
 						vertexColor = Global.EditorPreferences.SelectedVertexColor;
 					}
-					var normalizedX = vertex.X / _zoomLevel;
-					var normalizedY = vertex.Y / _zoomLevel;
-					_spriteBatch.DrawPoint(normalizedX, normalizedY, vertexColor, Global.VertexRenderSize);
+					var normalizedPos = WorldToViewportPosition(vertex.Position);
+					_spriteBatch.DrawPoint(normalizedPos.X, normalizedPos.Y, vertexColor, Global.VertexRenderSize);
 				}
 				else if(gameObject is Edge edge)
 				{
@@ -943,11 +1027,9 @@ namespace LevelEditor2D
 					{
 						edgeColor = Global.EditorPreferences.SelectedEdgeColor;
 					}
-					var normalizedX1 = edge.A.X / _zoomLevel;
-					var normalizedY1 = edge.A.Y / _zoomLevel;
-					var normalizedX2 = edge.B.X / _zoomLevel;
-					var normalizedY2 = edge.B.Y / _zoomLevel;
-					_spriteBatch.DrawLine(normalizedX1, normalizedY1, normalizedX2, normalizedY2, edgeColor, Global.EdgeRenderSize);
+					var normalizedPos1 = WorldToViewportPosition(edge.A.Position);
+					var normalizedPos2 = WorldToViewportPosition(edge.B.Position);
+					_spriteBatch.DrawLine(normalizedPos1.X, normalizedPos1.Y, normalizedPos2.X, normalizedPos2.Y, edgeColor, Global.EdgeRenderSize);
 				}
 			}
 
@@ -960,13 +1042,12 @@ namespace LevelEditor2D
 			// in in edge mode, render potentially placed edge
 			if (_selectedTool == Tool.Edge && _selectedObjects.Count == 1 && _selectedObjects[0] is Vertex selectedVertex)
 			{
-				var normalizedVertexX = selectedVertex.X / _zoomLevel;
-				var normalizedVertexY = selectedVertex.Y / _zoomLevel;
-				_spriteBatch.DrawLine(normalizedVertexX, normalizedVertexY, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
+				var screenVertexPosition = WorldToViewportPosition(selectedVertex.Position);
+				_spriteBatch.DrawLine(screenVertexPosition.X, screenVertexPosition.Y, _mouseState.X, _mouseState.Y, Color.Gray, Global.EdgeRenderSize);
 			}
 
 			// render selection rectangle
-			if(_selectedTool == Tool.Select && _mouseState.IsButtonDown(MouseButton.Left) && _selectedObjects.Count == 0)
+			if(_selectedTool == Tool.Select && _mouseIsInsideEditorPanel && !_isPopupActive && _mouseState.IsButtonDown(MouseButton.Left) && _selectedObjects.Count == 0)
 			{
 				float rectX = Math.Min(_lastClickPosition.X, _mouseState.Position.X);
 				float rectY = Math.Min(_lastClickPosition.Y, _mouseState.Position.Y);
@@ -981,6 +1062,29 @@ namespace LevelEditor2D
 			_desktop.Render();
 
 			base.Draw(gameTime);
+		}
+
+		private Vector2 ViewportToWorldPosition(Vector2 screenPosition)
+		{
+			//var worldX = (screenPosition.X - _cameraOffset.X) * _zoomLevel;
+			//var worldY = (screenPosition.Y - _cameraOffset.Y) * _zoomLevel;
+			// TODO: fix all this shit
+			//var worldX = (screenPosition.X + _cameraOffset.X - _editorAreaPanel.ActualBounds.X) * _zoomLevel;
+			//var worldY = (screenPosition.Y + _cameraOffset.Y - _editorAreaPanel.ActualBounds.Y) * _zoomLevel;
+			//return new Vector2(worldX, worldY);
+			var worldPosition = (screenPosition + _cameraOffset - _editorAreaPanel.ActualBounds.Location.ToVector2()) * _zoomLevel;
+			return worldPosition;
+		}
+
+		private Vector2 WorldToViewportPosition(Vector2 worldPosition)
+		{
+			//var screenX = (worldPosition.X / _zoomLevel) + _cameraOffset.X;
+			//var screenY = (worldPosition.Y / _zoomLevel) + _cameraOffset.Y;
+			//var screenX = (worldPosition.X / _zoomLevel) - _cameraOffset.X + _editorAreaPanel.ActualBounds.X;
+			//var screenY = (worldPosition.Y / _zoomLevel) - _cameraOffset.Y + _editorAreaPanel.ActualBounds.Y;
+			//return new Vector2(screenX, screenY);
+			var viewportPosition = worldPosition / _zoomLevel - _cameraOffset + _editorAreaPanel.ActualBounds.Location.ToVector2();
+			return viewportPosition;
 		}
 
 		protected override void OnExiting(object sender, EventArgs args)
